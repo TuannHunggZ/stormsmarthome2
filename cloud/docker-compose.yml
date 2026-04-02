@@ -1,0 +1,62 @@
+services:
+  supervisor2:
+    image: storm:2.1.0
+    container_name: supervisor2
+    hostname: supervisor2
+    command: storm supervisor
+    volumes:
+      - ./storm/config/supervisor.yaml:/conf/storm.yaml
+    ports:
+      - 6700-6703:6700-6703
+    networks:
+      storm_network:
+    extra_hosts:
+      - "zookeeper:10.0.41.101"
+      - "nimbus:10.0.41.101"
+      - "mqtt-broker:10.0.41.101"
+      - "supervisor1:10.0.41.101"
+
+  mysql:
+    image: mysql:8.4.2
+    container_name: mysql
+    networks:
+      storm_network:
+    environment:
+      MYSQL_ROOT_PASSWORD: Uet123
+      MYSQL_DATABASE: iotdata
+      MYSQL_USER: user1
+      MYSQL_PASSWORD: Uet123
+    ports:
+      - 3306:3306
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pUet123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  webapp:
+    image: iot-data-api:v1
+    container_name: iot-data-api
+    pull_policy: never
+    networks:
+      storm_network:
+    ports:
+      - 9000:9000
+    volumes:
+      - ./webapp/cred.json:/opt/app/cred.json
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: always
+    extra_hosts:
+      - "mqtt-broker:10.0.41.101"
+      
+networks:
+  storm_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
