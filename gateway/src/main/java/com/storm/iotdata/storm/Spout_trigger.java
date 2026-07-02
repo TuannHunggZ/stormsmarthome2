@@ -22,6 +22,7 @@ public class Spout_trigger extends BaseRichSpout {
 
     private SpoutOutputCollector _collector;
     private StormConfig config;
+    private long triggerSequence = 0L;
 
     public Spout_trigger(StormConfig config) {
         this.config = config;
@@ -72,10 +73,10 @@ public class Spout_trigger extends BaseRichSpout {
                 }
             }
             // System.gc();
-            _collector.emit("trigger", new Values(config.getUpdateInterval(), new SpoutProp(name, connect, totalSpeed, loadSpeed, total, load, queue, success, fail))); // Trigger signal to write data to file after 1 min
+            _collector.emit("trigger", new Values(config.getUpdateInterval(), new SpoutProp(name, connect, totalSpeed, loadSpeed, total, load, queue, success, fail)), triggerSequence++); // Trigger signal to write data to file after 1 min
         } catch (InterruptedException e) {
             e.printStackTrace();
-            _collector.emit("trigger", new Values(config.getUpdateInterval(), new SpoutProp())); // Trigger signal to write data to file after 1 min
+            _collector.emit("trigger", new Values(config.getUpdateInterval(), new SpoutProp()), triggerSequence++); // Trigger signal to write data to file after 1 min
         } 
     }
 
