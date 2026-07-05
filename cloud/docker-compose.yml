@@ -1,9 +1,42 @@
 services:
-  supervisor2:
+  zookeeper:
+    image: zookeeper:3.8.5
+    container_name: zookeeper
+    hostname: zookeeper
+    networks:
+      storm_network:
+    volumes:
+      - ./storm/config/zoo.cfg:/conf/zoo.cfg
+    ports:
+      - 2181:2181
+
+  nimbus:
     image: storm:2.1.0
-    container_name: supervisor2
-    hostname: supervisor2
+    container_name: nimbus
+    hostname: nimbus
+    command: sh -c "storm nimbus & storm ui"
+    volumes:
+      - ./storm/config/nimbus.yaml:/conf/storm.yaml
+      - ./tagawarescheduler/target/tagawarescheduler-1.0.jar:/apache-storm-2.1.0/lib/tagawarescheduler-1.0.jar
+      - ./target/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar:/apache-storm-2.1.0/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar
+    ports:
+      - 8080:8080
+      - 6627:6627
+    restart: always
+    networks:
+      storm_network:
+    depends_on:
+      - zookeeper
+
+  supervisor-cloud:
+    image: storm:2.1.0
+    container_name: supervisor-cloud
+    hostname: supervisor-cloud
     command: storm supervisor
+    depends_on:
+      - nimbus
+      - zookeeper
+    restart: always
     volumes:
       - ./storm/config/supervisor.yaml:/conf/storm.yaml
     ports:
@@ -11,10 +44,50 @@ services:
     networks:
       storm_network:
     extra_hosts:
-      - "zookeeper:10.0.41.101"
-      - "nimbus:10.0.41.101"
-      - "mqtt-broker:10.0.41.101"
-      - "supervisor1:10.0.41.101"
+      - "mqtt-broker:192.168.1.110"
+      - "supervisor-fog:192.168.1.110"
+
+  storm-exporter:
+    image: stormexporter:v1
+    container_name: storm-exporter
+    pull_policy: never
+    environment:
+      - STORM_UI_HOST=nimbus:8080
+      - PORT_EXPOSE=8082
+      - REFRESH_RATE=5
+    networks:
+      storm_network:
+    ports:
+      - 8082:8082
+    restart: always
+    depends_on:
+      - nimbus
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    depends_on:
+      - storm-exporter
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    expose:
+      - 9090
+    ports:
+      - 9090:9090
+    networks:
+      - storm_network
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    networks:
+      - storm_network
 
   mysql:
     image: mysql:8.4.2
@@ -52,7 +125,7 @@ services:
         condition: service_healthy
     restart: always
     extra_hosts:
-      - "mqtt-broker:10.0.41.101"
+      - "mqtt-broker:192.168.1.110"
       
 networks:
   storm_network:
