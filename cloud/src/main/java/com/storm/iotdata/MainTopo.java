@@ -84,7 +84,7 @@ public class MainTopo {
                 }
                 
                 TopologyBuilder builder = new TopologyBuilder();
-                builder.setSpout("spout-trigger", new Spout_trigger(config), 1);
+                builder.setSpout("spout-trigger", new Spout_trigger(config), 1).addConfiguration("tags", "cloud");
 
                 for (String topic : config.getSpoutTopicList()) {
                     builder.setSpout("spout-data-" + topic, new Spout_data(config, topic), 1);
@@ -98,7 +98,7 @@ public class MainTopo {
                     splitList.put("split-" + windowSize,
                             builder.setBolt("split-" + windowSize, new Bolt_split(windowSize, config), 1).setNumTasks(4));
                     avgList.put("avg-" + windowSize,
-                            builder.setBolt("avg-" + windowSize, new Bolt_avg(windowSize, config), 1));
+                            builder.setBolt("avg-" + windowSize, new Bolt_avg(windowSize, config), 1).addConfiguration("tags", "cloud"));
                     sumList.put("sum-" + windowSize,
                             builder.setBolt("sum-" + windowSize, new Bolt_sum(windowSize, config), 1).addConfiguration("tags", "cloud"));
                     forecastList.put("forecast-" + windowSize,
