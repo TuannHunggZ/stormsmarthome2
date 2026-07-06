@@ -1,6 +1,6 @@
 services:
   supervisor-fog:
-    image: storm:2.1.0
+    image: arm64v8/storm:2.5.0
     container_name: supervisor-fog
     hostname: supervisor-fog
     command: storm supervisor
@@ -18,8 +18,9 @@ services:
       storm_network:
 
   mqtt-broker:
-    image: mr4x2/mqtt-broker-iotdata:v1
+    image: mqtt-broker-iotdata:v1
     container_name: mqtt-broker
+    pull_policy: never
     networks:
       storm_network:
     ports:

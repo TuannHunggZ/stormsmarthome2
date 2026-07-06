@@ -107,6 +107,12 @@ sudo rm -r stormsmarthome2
 cd gateway
 ```
 
+### Build Docker image
+```bash
+cd mqtt-broker
+docker build -t mqtt-broker-iotdata:v1 .
+```
+
 ### Cấu hình Docker
 ```bash
 cd ~/gateway

@@ -433,8 +433,7 @@ public class TagAwareScheduler implements IScheduler {
     }
 
     @Override
-    @SuppressWarnings("rawtypes")
-    public void prepare(Map conf) {
+    public void prepare(Map<String, Object> conf, StormMetricsRegistry metricsRegistry) {
 
     }
 

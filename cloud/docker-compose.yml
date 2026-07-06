@@ -11,14 +11,14 @@ services:
       - 2181:2181
 
   nimbus:
-    image: storm:2.1.0
+    image: storm:2.5.0
     container_name: nimbus
     hostname: nimbus
     command: sh -c "storm nimbus & storm ui"
     volumes:
       - ./storm/config/nimbus.yaml:/conf/storm.yaml
-      - ./tagawarescheduler/target/tagawarescheduler-1.0.jar:/apache-storm-2.1.0/lib/tagawarescheduler-1.0.jar
-      - ./target/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar:/apache-storm-2.1.0/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar
+      - ./tagawarescheduler/target/tagawarescheduler-1.0.jar:/apache-storm-2.5.0/lib/tagawarescheduler-1.0.jar
+      - ./target/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar:/apache-storm-2.5.0/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar
     ports:
       - 8080:8080
       - 6627:6627
@@ -29,7 +29,7 @@ services:
       - zookeeper
 
   supervisor-cloud:
-    image: storm:2.1.0
+    image: storm:2.5.0
     container_name: supervisor-cloud
     hostname: supervisor-cloud
     command: storm supervisor
