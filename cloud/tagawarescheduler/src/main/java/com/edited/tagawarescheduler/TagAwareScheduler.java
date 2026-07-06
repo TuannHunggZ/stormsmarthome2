@@ -275,7 +275,13 @@ public class TagAwareScheduler implements IScheduler {
         Set<WorkerSlot> aliveSlots = getAliveSlots(cluster, topologyDetails);
 
         int numAvailableSlots = availableSlots.size();
-        int numSlotsNeeded = topologyDetails.getNumWorkers() - aliveSlots.size();
+        int numSlotsNeeded;
+
+        if ("untagged".equals(tag)) {
+            numSlotsNeeded = 1;
+        } else {
+            numSlotsNeeded = topologyDetails.getNumWorkers() - aliveSlots.size();
+        }
 
         // We want to check that we have enough available slots
         // based on the topology's number of workers and already assigned slots.

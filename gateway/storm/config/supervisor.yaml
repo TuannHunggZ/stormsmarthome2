@@ -11,6 +11,3 @@ storm.local.dir: "/data"
 
 supervisor.slots.ports:
   - 6704
-  - 6705
-  - 6706
-  - 6707
