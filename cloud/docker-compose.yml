@@ -40,7 +40,7 @@ services:
     volumes:
       - ./storm/config/supervisor.yaml:/conf/storm.yaml
     ports:
-      - 6700-6703:6700-6703
+      - 6700-6702:6700-6702
     networks:
       storm_network:
     extra_hosts:

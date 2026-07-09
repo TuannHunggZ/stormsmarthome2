@@ -96,7 +96,7 @@ public class MainTopo {
                 HashMap<String, BoltDeclarer> forecastList = new HashMap<String, BoltDeclarer>();
                 for (Integer windowSize : config.getWindowList()) {
                     splitList.put("split-" + windowSize,
-                            builder.setBolt("split-" + windowSize, new Bolt_split(windowSize, config), 1).setNumTasks(4));
+                            builder.setBolt("split-" + windowSize, new Bolt_split(windowSize, config), 1));
                     avgList.put("avg-" + windowSize,
                             builder.setBolt("avg-" + windowSize, new Bolt_avg(windowSize, config), 1).addConfiguration("tags", "cloud"));
                     sumList.put("sum-" + windowSize,
@@ -121,7 +121,7 @@ public class MainTopo {
                 Config conf = new Config();
                 conf.setDebug(true);
                 // conf.put(Config.TOPOLOGY_MAX_SPOUT_PENDING, 5000);
-                conf.setNumWorkers(2);
+                conf.setNumWorkers(4);
                 conf.registerSerialization(SpoutProp.class);
                 conf.registerSerialization(DeviceData.class);
                 conf.registerSerialization(HouseData.class);

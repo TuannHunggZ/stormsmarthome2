@@ -10,4 +10,4 @@ storm.log.dir: "/logs"
 storm.local.dir: "/data"
 
 supervisor.slots.ports:
-  - 6704
+  - 6703
