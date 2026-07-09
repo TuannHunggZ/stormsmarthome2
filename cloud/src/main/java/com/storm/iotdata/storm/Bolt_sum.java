@@ -119,7 +119,7 @@ public class Bolt_sum extends BaseRichBolt {
                         finalHouseDataSize++;
                         HouseData houseData = tempFinalHouseData.get(timeslice);
                         if(!houseData.isSaved()){
-                            _collector.emit("data", tuple, new Values(houseData.getClass(), houseData));
+                            _collector.emit("data", tuple, new Values(houseData.getClass().getSimpleName(), houseData));
                             houseDataNeedSave.push(houseData);
                         }
                         else if((System.currentTimeMillis()-houseData.getLastUpdate())>(cleanTrigger*gap*1000)){
@@ -134,7 +134,7 @@ public class Bolt_sum extends BaseRichBolt {
                         finalHouseholdDataSize++;
                         HouseholdData householdData = tempFinalHouseholdData.get(timeslice);
                         if(!householdData.isSaved()){
-                            _collector.emit("data", tuple, new Values(householdData.getClass(), householdData));
+                            _collector.emit("data", tuple, new Values(householdData.getClass().getSimpleName(), householdData));
                             householdDataNeedSave.push(householdData);
                         }
                         else if((System.currentTimeMillis()-householdData.getLastUpdate())>(cleanTrigger*gap*1000)){
@@ -306,7 +306,7 @@ public class Bolt_sum extends BaseRichBolt {
                 _collector.emit("trigger", tuple, new Values(triggerInterval, spoutProp));
                 _collector.ack(tuple);
             }
-            else if(tuple.getSourceStreamId().equals("data") && tuple.getValueByField("type").equals(DeviceData.class)){
+            else if(tuple.getSourceStreamId().equals("data") && tuple.getValueByField("type").equals(DeviceData.class.getSimpleName())){
                 DeviceData tempData     = (DeviceData) tuple.getValueByField("data");
 
                 HashMap<Integer, HashMap<Integer,HashMap<String, DeviceData> > > sliceData = allData.getOrDefault(tempData.getSliceId(), new HashMap<Integer, HashMap<Integer,HashMap<String, DeviceData> > >());

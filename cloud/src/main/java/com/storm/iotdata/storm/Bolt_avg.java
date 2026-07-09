@@ -71,7 +71,7 @@ public class Bolt_avg extends BaseRichBolt {
                     for(String key : deviceDataList.keySet()){
                         DeviceData data = deviceDataList.get(key);
                         if(!data.isSaved()){
-                            _collector.emit("data", tuple, new Values(data.getClass(), data));
+                            _collector.emit("data", tuple, new Values(data.getClass().getSimpleName(), data));
                             needSave.push(data);
                         }
                         else if(data.isSaved() && (System.currentTimeMillis()-data.getLastUpdate())>(cleanTrigger*gap*60000)){

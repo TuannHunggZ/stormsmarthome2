@@ -123,7 +123,9 @@ public class MainTopo {
                 // conf.put(Config.TOPOLOGY_MAX_SPOUT_PENDING, 5000);
                 conf.setNumWorkers(2);
                 conf.registerSerialization(SpoutProp.class);
-                // conf.registerSerialization(com.storm.iotdata.models.SpoutProp.class);
+                conf.registerSerialization(DeviceData.class);
+                conf.registerSerialization(HouseData.class);
+                conf.registerSerialization(HouseholdData.class);
 
                 // Local Cluster Test
                 if(cmd.hasOption("develop")){

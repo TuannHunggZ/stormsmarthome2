@@ -124,17 +124,17 @@ public class Bolt_forecast extends BaseRichBolt {
                 _collector.ack(input);
             }
             else if(input.getSourceStreamId().equals("data")){
-                if(input.getValueByField("type").equals(HouseData.class)){
+                if(input.getValueByField("type").equals(HouseData.class.getSimpleName())){
                     HouseData data = (HouseData) input.getValueByField("data");
                     houseDataList.put(data.getUniqueId(), data);
                     _collector.ack(input);
                 }
-                else if(input.getValueByField("type").equals(HouseholdData.class)){
+                else if(input.getValueByField("type").equals(HouseholdData.class.getSimpleName())){
                     HouseholdData data = (HouseholdData) input.getValueByField("data");
                     householdDataList.put(data.getUniqueId(), data);
                     _collector.ack(input);
                 }
-                else if(input.getValueByField("type").equals(DeviceData.class)){
+                else if(input.getValueByField("type").equals(DeviceData.class.getSimpleName())){
                     DeviceData data = (DeviceData) input.getValueByField("data");
                     deviceDataList.put(data.getUniqueId(), data);
                     _collector.ack(input);
