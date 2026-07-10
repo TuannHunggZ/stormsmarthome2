@@ -7,6 +7,7 @@
 package com.storm.iotdata.storm;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -23,11 +24,15 @@ import com.storm.iotdata.models.*;
  * @author hiiamlala
  */
 public class Bolt_split extends BaseRichBolt {
+    private static final String INPUT_STREAM = "data";
+    private static final String STREAM_PREFIX = "window-";
+
     private StormConfig config;
-    private int window;
-    public Bolt_split(int window, StormConfig config) {
-        this.window = window;
+    private List<Integer> windowList;
+
+    public Bolt_split(StormConfig config) {
         this.config = config;
+        this.windowList = config.getWindowList();
     }
 
     // output collector
@@ -35,7 +40,12 @@ public class Bolt_split extends BaseRichBolt {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-        declarer.declareStream("data", new Fields("houseId", "householdId", "deviceId", "year", "month", "day", "sliceIndex", "value"));
+        for (Integer window : windowList) {
+            declarer.declareStream(
+                STREAM_PREFIX + window,
+                new Fields("houseId", "householdId", "deviceId", "year", "month", "day", "sliceIndex", "value")
+            );
+        }
     }
 
     @Override
@@ -46,7 +56,7 @@ public class Bolt_split extends BaseRichBolt {
     @Override
     public void execute(Tuple tuple) {
         try{
-            if(tuple.getSourceStreamId().equals("data")){
+            if(tuple.getSourceStreamId().equals(INPUT_STREAM)){
                 Integer houseId     = Integer.parseInt((String)tuple.getValueByField("houseId"));
                 Integer householdId = Integer.parseInt((String)tuple.getValueByField("householdId"));
                 Integer plugId      = Integer.parseInt((String)tuple.getValueByField("plugId"));
@@ -59,8 +69,15 @@ public class Bolt_split extends BaseRichBolt {
                 String month = String.format("%02d", (1+date.getMonth()));
                 String day = String.format("%02d", date.getDate()) ;
                 Long time = (date.getTime()%86400000);
-                int sliceIndex = (int) Math.floorDiv(time,(window*60000));
-                _collector.emit("data", tuple, new Values(houseId, householdId, plugId, year, month, day, sliceIndex, value));
+
+                for (Integer window : windowList) {
+                    int sliceIndex = (int) Math.floorDiv(time, (window * 60000));
+                    _collector.emit(
+                        STREAM_PREFIX + window,
+                        tuple,
+                        new Values(houseId, householdId, plugId, year, month, day, sliceIndex, value)
+                    );
+                }
                 _collector.ack(tuple);
             }
             else{

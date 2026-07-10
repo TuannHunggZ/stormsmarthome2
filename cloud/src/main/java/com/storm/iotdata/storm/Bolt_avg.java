@@ -29,6 +29,8 @@ import org.apache.storm.tuple.Values;
  * @author hiiamlala
  */
 public class Bolt_avg extends BaseRichBolt {
+    private static final String WINDOW_STREAM_PREFIX = "window-";
+
     public Long processSpeed = Long.valueOf(0);
     public Integer deviceDataUpdateFailCount = 0;
     public Integer deviceNotiUpdateFailCount = 0;
@@ -36,7 +38,7 @@ public class Bolt_avg extends BaseRichBolt {
     private StormConfig config;
     public Integer gap;
     public Integer triggerCount = 0;
-    public Integer cleanTrigger = 5; //older than 5*gap will be clean 
+    public Integer cleanTrigger = 5; //older than 5*gap will be clean
     public Double total = Double.valueOf(0);
     public HashMap<String, DeviceData> deviceDataList = new HashMap<String, DeviceData>();
     public HashMap<String, DeviceProp> devicePropList = new HashMap<String, DeviceProp>();
@@ -46,7 +48,7 @@ public class Bolt_avg extends BaseRichBolt {
         this.config = config;
         devicePropList = DB_store.initDevicePropList();
     }
-    
+
     private OutputCollector _collector;
 
     @Override
@@ -122,7 +124,7 @@ public class Bolt_avg extends BaseRichBolt {
                         //Save data_prop
                         devicePropList.put(devicePropUniqueId, deviceProp.addValue(deviceData.getAvg()));
                     }
-                    
+
                     //Save Noti
                     if(DB_store.pushDeviceNotification(deviceNotificationList, new File("./tmp/devicenoti2db-" + gap + ".lck"))){
                         deviceNotiUpdateFailCount = 0;
@@ -135,7 +137,7 @@ public class Bolt_avg extends BaseRichBolt {
                     else if(++deviceNotiUpdateFailCount>=3){
                         new File("./tmp/devicenoti2db-" + gap + ".lck").delete();
                     }
-                    
+
                     //Logging
                     Long execTime = System.currentTimeMillis() - startExec;
 
@@ -162,7 +164,7 @@ public class Bolt_avg extends BaseRichBolt {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
-                    
+
                     //Clean garbage
                     for(String key : needClean){
                         deviceDataList.remove(key);
@@ -174,7 +176,7 @@ public class Bolt_avg extends BaseRichBolt {
                 }
                 _collector.ack(tuple);
             }
-            else if (tuple.getSourceStreamId().equals("data")) {
+            else if (tuple.getSourceStreamId().startsWith(WINDOW_STREAM_PREFIX)) {
                 Integer houseId         = (Integer) tuple.getValueByField("houseId");
                 Integer householdId     = (Integer)tuple.getValueByField("householdId");
                 Integer deviceId        = (Integer)tuple.getValueByField("deviceId");
@@ -202,5 +204,5 @@ public class Bolt_avg extends BaseRichBolt {
         declarer.declareStream("data", new Fields("type","data"));
         declarer.declareStream("trigger", new Fields("trigger", "spoutProp"));
     }
-    
+
 }

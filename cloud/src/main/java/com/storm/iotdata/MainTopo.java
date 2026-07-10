@@ -54,14 +54,14 @@ public class MainTopo {
 
             try {
                 cmd = parser.parse(options, args);
-                
+
                 if(cmd.hasOption("purge") || config.isCleanDatabase()){
                     DB_store.purgeData();
                 }
                 else{
                     DB_store.initData();
                 }
-                
+
                 // Init Broker URL
                 if(cmd.hasOption("broker")){
                     config.setSpoutBrokerURL("tcp://" + cmd.getOptionValue("broker"));
@@ -73,7 +73,7 @@ public class MainTopo {
                 }
 
                 // Init windows list
-                
+
                 if(cmd.hasOption("windows")){
                     Integer[] windowList = new Integer[100];
                     String[] tmp = cmd.getOptionValue("windows").split(",");
@@ -82,21 +82,20 @@ public class MainTopo {
                     }
                     config.setWindowList(Arrays.asList(windowList));
                 }
-                
+
                 TopologyBuilder builder = new TopologyBuilder();
-                builder.setSpout("spout-trigger", new Spout_trigger(config), 1).addConfiguration("tags", "cloud");
+                builder.setSpout("spout-trigger", new Spout_trigger(config), 1);
 
                 for (String topic : config.getSpoutTopicList()) {
                     builder.setSpout("spout-data-" + topic, new Spout_data(config, topic), 1);
                 }
 
-                HashMap<String, BoltDeclarer> splitList = new HashMap<String, BoltDeclarer>();
                 HashMap<String, BoltDeclarer> avgList = new HashMap<String, BoltDeclarer>();
                 HashMap<String, BoltDeclarer> sumList = new HashMap<String, BoltDeclarer>();
                 HashMap<String, BoltDeclarer> forecastList = new HashMap<String, BoltDeclarer>();
+                BoltDeclarer splitBolt = builder.setBolt("split", new Bolt_split(config), 1);
+
                 for (Integer windowSize : config.getWindowList()) {
-                    splitList.put("split-" + windowSize,
-                            builder.setBolt("split-" + windowSize, new Bolt_split(windowSize, config), 1));
                     avgList.put("avg-" + windowSize,
                             builder.setBolt("avg-" + windowSize, new Bolt_avg(windowSize, config), 1).addConfiguration("tags", "cloud"));
                     sumList.put("sum-" + windowSize,
@@ -104,12 +103,13 @@ public class MainTopo {
                     forecastList.put("forecast-" + windowSize,
                             builder.setBolt("forecast-" + windowSize, new Bolt_forecast(windowSize, config), 1).addConfiguration("tags", "cloud"));
                 }
-                
+
+                for (String topic : config.getSpoutTopicList()){
+                    splitBolt.allGrouping("spout-data-" + topic, "data");
+                }
+
                 for (Integer windowSize : config.getWindowList()) {
-                    for (String topic : config.getSpoutTopicList()){
-                        splitList.get("split-" + windowSize).allGrouping("spout-data-" + topic, "data");
-                    }
-                    avgList.get("avg-" + windowSize).shuffleGrouping("split-" + windowSize, "data");
+                    avgList.get("avg-" + windowSize).shuffleGrouping("split", "window-" + windowSize);
                     avgList.get("avg-" + windowSize).shuffleGrouping("spout-trigger", "trigger");
                     sumList.get("sum-" + windowSize).shuffleGrouping("avg-" + windowSize, "data");
                     sumList.get("sum-" + windowSize).shuffleGrouping("avg-" + windowSize, "trigger");
