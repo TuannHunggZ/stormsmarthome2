@@ -11,7 +11,7 @@ public class HouseholdData extends Timeslice implements Serializable {
     public Boolean saved = false;
 
     public HouseholdData() {
-        super()
+        super();
     }
 
     public HouseholdData(Integer houseId, Integer householdId, String timeslice, Double value) {
