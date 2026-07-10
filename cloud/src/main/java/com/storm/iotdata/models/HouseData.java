@@ -13,6 +13,10 @@ public class HouseData extends Timeslice implements Serializable{
     public Long lastUpdate;
     public Boolean saved = false;
 
+    public HouseData() {
+        super()
+    }
+
     public HouseData(Integer houseId, Timeslice timeslice, Double value) {
         super(timeslice);
         this.houseId = houseId;

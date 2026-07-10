@@ -10,6 +10,10 @@ public class HouseholdData extends Timeslice implements Serializable {
     public Long lastUpdate;
     public Boolean saved = false;
 
+    public HouseholdData {
+        super()
+    }
+
     public HouseholdData(Integer houseId, Integer householdId, String timeslice, Double value) {
         super(timeslice);
         this.houseId = houseId;
