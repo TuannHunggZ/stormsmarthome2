@@ -10,7 +10,7 @@ public class HouseholdData extends Timeslice implements Serializable {
     public Long lastUpdate;
     public Boolean saved = false;
 
-    public HouseholdData {
+    public HouseholdData() {
         super()
     }
 
