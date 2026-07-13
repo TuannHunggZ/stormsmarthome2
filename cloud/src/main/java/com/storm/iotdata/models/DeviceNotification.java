@@ -2,6 +2,17 @@ package com.storm.iotdata.models;
 
 import com.google.gson.Gson;
 
+/**
+ * DeviceNotification là thông báo bất thường ở cấp thiết bị.
+ *
+ * Ý nghĩa field:
+ * - `type`: loại cảnh báo (-1 thấp, 0 cao hơn avg, 1 vượt max theo logic hiện tại).
+ * - `houseId`, `householdId`, `deviceId`: định danh nguồn phát sinh cảnh báo.
+ * - `min/max/avg`: baseline lịch sử dùng để so sánh.
+ * - `value`: giá trị thực tế tại timeslice gây cảnh báo.
+ * - `timestamp`: thời điểm tạo notification.
+ * - `saved`: cờ persist, hiện chủ yếu để tương thích model khác.
+ */
 public class DeviceNotification extends Timeslice{
     public Integer type;
     public Integer houseId;
@@ -17,6 +28,7 @@ public class DeviceNotification extends Timeslice{
     public DeviceNotification(Integer type, DeviceData data, DeviceProp dataProp){
         super(data.year, data.month, data.day, data.sliceIndex, data.sliceGap);
         this.type=type;
+        // TODO: `houseId` đang được gán bằng `data.deviceId`, có thể là bug dữ liệu nếu notification này được dùng downstream.
         this.houseId=data.deviceId;
         this.householdId=data.householdId;
         this.deviceId=data.deviceId;

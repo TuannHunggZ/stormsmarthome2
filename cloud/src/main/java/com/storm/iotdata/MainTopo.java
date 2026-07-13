@@ -29,11 +29,36 @@ import org.apache.storm.StormSubmitter;
 import org.apache.storm.topology.BoltDeclarer;
 import org.apache.storm.topology.TopologyBuilder;
 
+/**
+ * MainTopo dựng toàn bộ topology Apache Storm cho bài toán phân tích điện năng IoT.
+ *
+ * Vai trò:
+ * - Khởi tạo config, nguồn dữ liệu, và kết nối giữa các component.
+ * - Một luồng dữ liệu thô đi theo hướng: Spout_data -> Bolt_split -> Bolt_avg -> Bolt_sum/Bolt_forecast.
+ * - Một luồng trigger đồng bộ chu kỳ đi theo hướng: Spout_trigger -> Bolt_avg -> Bolt_sum -> Bolt_forecast.
+ *
+ * Input:
+ * - Tham số CLI để override broker, topic, danh sách window và chế độ chạy local.
+ *
+ * Output:
+ * - Topology đã được submit lên LocalCluster hoặc Storm cluster.
+ *
+ * State:
+ * - File này không giữ state runtime lâu dài; chỉ giữ cấu hình và mapping tạm thời khi dựng topology.
+ *
+ * Tóm tắt:
+ * - Component này chịu trách nhiệm "wiring" toàn bộ graph xử lý.
+ * - State quan trọng là `config`, `avgList`, `sumList`, `forecastList`.
+ * - Bản thân file này không phải điểm nghẽn xử lý vì chỉ chạy lúc khởi động.
+ * - Có thể mở rộng parallelism ở đây bằng cách tăng parallelism hint khi setSpout/setBolt.
+ */
 public class MainTopo {
     public static void main(String[] args) throws Exception {
+        // Cấu hình dùng chung cho toàn bộ topology: broker, topic, window, notification...
         StormConfig config = new StormConfig();
         System.out.println(config.toString());
         try {
+            // Định nghĩa CLI option để override cấu hình từ file YAML khi cần chạy thử.
             Options options = new Options();
             Option opt_purge = new Option("p", "purge", false, "Purge data in DB");
             options.addOption(opt_purge);
@@ -55,6 +80,8 @@ public class MainTopo {
             try {
                 cmd = parser.parse(options, args);
 
+                // Khởi tạo trạng thái DB trước khi submit topology.
+                // TODO: Hai nhánh purge/init được điều khiển bằng config và CLI, cần cẩn thận khi chạy production.
                 if(cmd.hasOption("purge") || config.isCleanDatabase()){
                     DB_store.purgeData();
                 }
@@ -83,6 +110,7 @@ public class MainTopo {
                     config.setWindowList(Arrays.asList(windowList));
                 }
 
+                // Tạo topology graph.
                 TopologyBuilder builder = new TopologyBuilder();
                 builder.setSpout("spout-trigger", new Spout_trigger(config), 1);
 
@@ -90,6 +118,11 @@ public class MainTopo {
                     builder.setSpout("spout-data-" + topic, new Spout_data(config, topic), 1);
                 }
 
+                // Mapping tên component theo từng window để tiện nối topology động.
+                // Tên đề xuất dễ hiểu hơn:
+                // - `avgList` -> `avgBoltsByWindow`
+                // - `sumList` -> `sumBoltsByWindow`
+                // - `forecastList` -> `forecastBoltsByWindow`
                 HashMap<String, BoltDeclarer> avgList = new HashMap<String, BoltDeclarer>();
                 HashMap<String, BoltDeclarer> sumList = new HashMap<String, BoltDeclarer>();
                 HashMap<String, BoltDeclarer> forecastList = new HashMap<String, BoltDeclarer>();
@@ -104,15 +137,20 @@ public class MainTopo {
                             builder.setBolt("forecast-" + windowSize, new Bolt_forecast(windowSize, config), 1).addConfiguration("tags", "cloud"));
                 }
 
+                // Tất cả dữ liệu thô từ các topic đều đi vào bolt chia timeslice.
+                // allGrouping khiến mọi instance của `split` (nếu scale lên) đều thấy cùng một luồng dữ liệu.
                 for (String topic : config.getSpoutTopicList()){
                     splitBolt.allGrouping("spout-data-" + topic, "data");
                 }
 
                 for (Integer windowSize : config.getWindowList()) {
+                    // Nhánh tính trung bình theo từng window.
                     avgList.get("avg-" + windowSize).shuffleGrouping("split", "window-" + windowSize);
                     avgList.get("avg-" + windowSize).shuffleGrouping("spout-trigger", "trigger");
+                    // Nhánh tính tổng house/household nhận DeviceData tổng hợp từ avg.
                     sumList.get("sum-" + windowSize).shuffleGrouping("avg-" + windowSize, "data");
                     sumList.get("sum-" + windowSize).shuffleGrouping("avg-" + windowSize, "trigger");
+                    // Nhánh forecast dùng cả dữ liệu từ avg (device-level) và sum (house/household-level).
                     forecastList.get("forecast-" + windowSize).shuffleGrouping("avg-" + windowSize, "data");
                     forecastList.get("forecast-" + windowSize).shuffleGrouping("sum-" + windowSize, "data");
                     forecastList.get("forecast-" + windowSize).shuffleGrouping("sum-" + windowSize, "trigger");
@@ -127,7 +165,7 @@ public class MainTopo {
                 conf.registerSerialization(HouseData.class);
                 conf.registerSerialization(HouseholdData.class);
 
-                // Local Cluster Test
+                // Chạy local để debug hoặc submit lên cluster thật.
                 if(cmd.hasOption("develop")){
                     LocalCluster cluster = new LocalCluster(); // create the local cluster
                     cluster.submitTopology(config.getTopologyName(), conf, builder.createTopology());

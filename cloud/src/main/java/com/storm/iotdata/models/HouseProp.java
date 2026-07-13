@@ -3,14 +3,40 @@ package com.storm.iotdata.models;
 import java.io.Serializable;
 import java.util.Objects;
 
+/**
+ * HouseProp lưu thống kê lịch sử ở cấp house để kiểm tra outlier.
+ *
+ * Ý nghĩa field:
+ * - `houseId`: định danh house.
+ * - `sliceGap`: window áp dụng.
+ * - `min/max/avg/count`: thống kê lịch sử rolling.
+ * - `lastUpdate`: cập nhật cuối.
+ * - `saved`: đã persist hay chưa.
+ *
+ * Các khóa:
+ * - `getUniqueId()`: house + gap.
+ * - `getHouseUniqueId()`: chỉ houseId, dùng để lookup map thống kê.
+ *
+ * Tóm tắt:
+ * - State lịch sử của `Bolt_sum` ở cấp house.
+ * - Không emit qua topology; chỉ phục vụ so sánh và ghi DB.
+ */
 public class HouseProp implements Serializable{
+    // Định danh house.
     public int houseId;
+    // Window/gap của thống kê.
     public int sliceGap;
+    // Giá trị min lịch sử.
     public Double min;
+    // Giá trị max lịch sử.
     public Double max;
+    // Giá trị avg lịch sử.
     public Double avg;
+    // Số mẫu đã góp vào thống kê.
     public Double count;
+    // Mốc cập nhật gần nhất.
     public Long lastUpdate;
+    // Đã persist DB hay chưa.
     public boolean saved = false;
 
     public HouseProp(int houseId, int sliceGap){

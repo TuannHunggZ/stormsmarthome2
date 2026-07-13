@@ -19,11 +19,45 @@ import com.storm.iotdata.functions.DB_store;
 import com.storm.iotdata.functions.MQTT_publisher;
 import com.storm.iotdata.models.*;
 
+/**
+ * Bolt_forecast tạo dữ liệu dự báo cho house/household/device từ aggregate đã chốt.
+ *
+ * Vai trò:
+ * - Nhận `DeviceData` từ `Bolt_avg` và `HouseData`/`HouseholdData` từ `Bolt_sum`.
+ * - Giữ chúng trong cache cho tới khi nhận trigger.
+ * - Khi trigger đến, truy vấn dữ liệu lịch sử trong DB, tính median và tạo forecast cho timeslice kế tiếp.
+ *
+ * Input:
+ * - Stream `data` từ `Bolt_avg` và `Bolt_sum`.
+ * - Stream `trigger` từ `Bolt_sum`.
+ *
+ * Output:
+ * - Không emit tuple tiếp; chỉ ghi forecast xuống DB và log.
+ *
+ * State:
+ * - `houseDataList`, `householdDataList`, `deviceDataList`: cache dữ liệu đầu vào chờ forecast.
+ *
+ * Khi state thay đổi:
+ * - Thêm/cập nhật khi nhận tuple `data`.
+ * - Ghi DB forecast ở trigger.
+ * - Xóa khỏi cache nếu đã lưu forecast thành công.
+ *
+ * Tóm tắt:
+ * - Đây là sink tính forecast cuối pipeline.
+ * - State quan trọng là ba map cache theo loại aggregate.
+ * - Có thể chạy song song nếu chia partition dữ liệu hợp lý, nhưng mỗi instance sẽ tự truy vấn DB riêng.
+ * - Điểm nghẽn là I/O DB khi query lịch sử cho từng record và thao tác sort để tính median.
+ */
 public class Bolt_forecast extends BaseRichBolt {
+    // Cấu hình toàn cục.
     private StormConfig config;
+    // Kích thước window của dữ liệu mà bolt này đang forecast.
     private int gap;
+    // Cache HouseData chờ forecast, key là `HouseData.getUniqueId()`.
     private HashMap<String,HouseData> houseDataList;
+    // Cache HouseholdData chờ forecast, key là `HouseholdData.getUniqueId()`.
     private HashMap<String,HouseholdData> householdDataList;
+    // Cache DeviceData chờ forecast, key là `DeviceData.getUniqueId()`.
     private HashMap<String,DeviceData> deviceDataList;
     private OutputCollector _collector;
 
@@ -45,8 +79,9 @@ public class Bolt_forecast extends BaseRichBolt {
     public void execute(Tuple input) {
         try{
             if(input.getSourceStreamId().equals("trigger")){
+                // Trigger là thời điểm chốt toàn bộ cache thành forecast và ghi DB.
                 Stack<String> logs = new Stack<String>();
-                //Start forecast
+                // Forecast cấp house.
                 Long start = System.currentTimeMillis();
                 HashMap<String, HouseData> houseDataForecast= forecast(houseDataList);
                 Stack<HouseData> tempHouseDataForecast = new Stack<HouseData>();
@@ -66,6 +101,7 @@ public class Bolt_forecast extends BaseRichBolt {
                     logs.add(String.format("[Bolt_forecast_%d] HouseData forecast not saved\n", gap));
                 }
 
+                // Forecast cấp household.
                 start = System.currentTimeMillis();
                 HashMap<String, HouseholdData> householdDataForecast = forecast(householdDataList);
                 Stack<HouseholdData> tempHouseholdDataForecast = new Stack<HouseholdData>();
@@ -85,6 +121,7 @@ public class Bolt_forecast extends BaseRichBolt {
                     logs.add(String.format("[Bolt_forecast_%d] HouseholdData forecast not saved\n", gap));
                 }
 
+                // Forecast cấp device.
                 HashMap<String, DeviceData> deviceDataForecast = forecast(deviceDataList);
                 Stack<DeviceData> tempDeviceDataForecast = new Stack<DeviceData>();
                 tempDeviceDataForecast.addAll(deviceDataForecast.values());
@@ -124,6 +161,7 @@ public class Bolt_forecast extends BaseRichBolt {
                 _collector.ack(input);
             }
             else if(input.getSourceStreamId().equals("data")){
+                // Nhận dữ liệu aggregate đã chốt từ upstream và lưu theo từng loại để chờ trigger.
                 if(input.getValueByField("type").equals(HouseData.class.getSimpleName())){
                     HouseData data = (HouseData) input.getValueByField("data");
                     houseDataList.put(data.getUniqueId(), data);
@@ -154,8 +192,7 @@ public class Bolt_forecast extends BaseRichBolt {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-        // TODO Auto-generated method stub
-
+        // Bolt cuối pipeline, không emit stream downstream.
     }
 
     public static <E> HashMap<String, E> forecast(HashMap<String,E> inputData){
@@ -163,9 +200,11 @@ public class Bolt_forecast extends BaseRichBolt {
         try{
             if(inputData.size()!=0){
                 try (Connection conn = DB_store.initConnection()){
+                    // Chọn chiến lược dựng forecast theo đúng kiểu dữ liệu hiện có trong cache.
                     if(inputData.values().toArray()[0] instanceof HouseData){
                         for(String key : inputData.keySet()){
                             HouseData ele = (HouseData) inputData.get(key);
+                            // Median dữ liệu lịch sử được dùng như tín hiệu làm mượt cho giá trị dự báo.
                             Double median = getMedian(DB_store.queryBefore(ele, conn));
                             Double forecastValue = ele.getAvg();
                             if(median > 0){
@@ -209,6 +248,7 @@ public class Bolt_forecast extends BaseRichBolt {
     public static <E> Double getMedian(HashMap<String, E> beforeData){
         Double median = Double.valueOf(0);
         if(beforeData.size()>0){
+            // Sắp xếp theo avg để lấy trung vị, giảm ảnh hưởng của outlier đơn lẻ so với mean.
             ArrayList<E> beforeAvgs = new ArrayList<>(beforeData.values());
             beforeAvgs.sort(new Comparator<E>(){
                 @Override

@@ -7,14 +7,42 @@ import java.util.Objects;
  * DeviceData
  */
 
+/**
+ * DeviceData là aggregate ở cấp thiết bị cho một `Timeslice`.
+ *
+ * Ý nghĩa field:
+ * - `houseId`, `householdId`, `deviceId`: định danh vị trí thiết bị trong hệ thống.
+ * - `value`: tổng giá trị đã cộng dồn trong timeslice hiện tại.
+ * - `count`: số mẫu đã góp vào `value`.
+ * - `lastUpdate`: thời điểm object được cập nhật gần nhất, dùng để dọn cache.
+ * - `saved`: đánh dấu record đã được persist xuống DB hay chưa.
+ *
+ * Các khóa:
+ * - `getUniqueId()`: khóa đầy đủ theo `house-household-device-timeslice`, dùng làm key cache chính trong `Bolt_avg`.
+ * - `getDeviceUniqueId()`: khóa thiết bị không kèm timeslice, dùng làm key thống kê lịch sử `DeviceProp`.
+ * - `getHouseholdUniqueId()`: khóa household cha của thiết bị.
+ *
+ * Tóm tắt:
+ * - Đây là object trung gian quan trọng nhất ở tầng device.
+ * - Không tự ghi DB; được `Bolt_avg` quản lý vòng đời.
+ * - Có thể dùng song song an toàn vì là data object.
+ * - TODO: class hiện để field public nên rất dễ bị sửa state trực tiếp ngoài các setter/builder method.
+ */
 public class DeviceData extends Timeslice implements Serializable {
 
+    // House chứa thiết bị.
     public Integer houseId;
+    // Household chứa thiết bị.
     public Integer householdId;
+    // Định danh thiết bị trong household.
     public Integer deviceId;
+    // Tổng giá trị cộng dồn trong timeslice.
     public Double value;
+    // Số lượng mẫu đã cộng để tính trung bình.
     public Double count;
+    // Mốc cập nhật cuối, dùng cho chiến lược cleanup state.
     public Long lastUpdate;
+    // Đánh dấu đã ghi DB hay chưa.
     public Boolean saved=false;
 
     public DeviceData() {
@@ -149,6 +177,7 @@ public class DeviceData extends Timeslice implements Serializable {
     }
 
     public Double getAvg() {
+        // Trung bình timeslice = tổng giá trị / số mẫu đã tích lũy.
         if(this.count==0){
             return  Double.valueOf(0);
         }
@@ -231,10 +260,12 @@ public class DeviceData extends Timeslice implements Serializable {
     }
 
     public String getUniqueId(){
+        // Khóa aggregate đầy đủ của một device trong một timeslice.
         return String.format("%d-%d-%d-%s-%s-%s-%d-%d", houseId, householdId, deviceId, year, month, day, sliceGap, sliceIndex);
     }
 
 	public String getDeviceUniqueId() {
+        // Khóa thiết bị ổn định qua mọi timeslice, dùng để lookup `DeviceProp`.
 		return String.format("%d-%d-%d", houseId, householdId, deviceId);
     }
     

@@ -6,6 +6,18 @@ import java.util.TimeZone;
 
 import com.google.gson.Gson;
 
+/**
+ * SpoutProp là snapshot trạng thái ingest của một hoặc nhiều `Spout_data`.
+ *
+ * Ý nghĩa field:
+ * - `name`: tên nguồn snapshot.
+ * - `connect`: trạng thái kết nối broker.
+ * - `totalSpeed`, `loadSpeed`: tốc độ message tổng / message load.
+ * - `total`, `load`: tổng số message tổng / load từ lúc khởi động.
+ * - `queue`: số message còn nằm trong queue nội bộ của spout.
+ * - `success`, `fail`: số tuple Storm đã ack/fail.
+ * - `lastUpdate`: mốc thời gian snapshot.
+ */
 public class SpoutProp {
     private String name;
     private Boolean connect;

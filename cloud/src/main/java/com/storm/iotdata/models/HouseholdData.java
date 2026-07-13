@@ -2,12 +2,36 @@ package com.storm.iotdata.models;
 
 import java.io.Serializable;
 
+/**
+ * HouseholdData là aggregate ở cấp household cho một `Timeslice`.
+ *
+ * Ý nghĩa field:
+ * - `houseId`: house cha.
+ * - `householdId`: household trong house.
+ * - `value`: giá trị aggregate của household tại timeslice.
+ * - `lastUpdate`: thời điểm cập nhật cuối.
+ * - `saved`: đã persist xuống DB hay chưa.
+ *
+ * Các khóa:
+ * - `getUniqueId()`: household + timeslice, dùng làm key cache chính.
+ * - `getHouseholdUniqueId()`: household ổn định qua mọi timeslice, dùng cho `HouseholdProp`.
+ *
+ * Tóm tắt:
+ * - Object trung gian giữa `Bolt_sum` và `Bolt_forecast`.
+ * - Được quản lý vòng đời bởi bolt, không tự thao tác DB.
+ * - Có thể dùng song song an toàn vì là data object.
+ */
 public class HouseholdData extends Timeslice implements Serializable {
 
+    // House cha.
     public Integer houseId;
+    // Định danh household trong house.
     public Integer householdId;
+    // Giá trị aggregate của household.
     public Double value;
+    // Mốc cập nhật gần nhất.
     public Long lastUpdate;
+    // Đã lưu DB hay chưa.
     public Boolean saved = false;
 
     public HouseholdData() {
@@ -131,6 +155,7 @@ public class HouseholdData extends Timeslice implements Serializable {
     }
 
     public HouseholdData householdId(Integer householdId) {
+        // TODO: method này đang gọi `setHouseId(...)` thay vì `setHouseholdId(...)`, dễ gây bug nếu được dùng.
         this.setHouseId(householdId);
         return this;
     }
@@ -169,6 +194,7 @@ public class HouseholdData extends Timeslice implements Serializable {
     }
 
     public String getUniqueId() {
+        // Khóa đầy đủ của household theo timeslice.
         return String.format("%d-%d-%s-%s-%s-%d-%d", houseId, householdId, year, month, day, sliceGap, sliceIndex);
     }
 

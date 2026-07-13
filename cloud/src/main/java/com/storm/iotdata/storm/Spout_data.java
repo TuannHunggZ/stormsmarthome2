@@ -30,21 +30,68 @@ import org.eclipse.paho.client.mqttv3.MqttSecurityException;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 
+/**
+ * Spout_data là điểm vào của dữ liệu IoT thô từ MQTT.
+ *
+ * Vai trò:
+ * - Subscribe một topic MQTT.
+ * - Nhận message, đẩy vào hàng đợi nội bộ rồi emit các bản ghi "load" sang stream `data`.
+ * - Tạo log ingest định kỳ để `Spout_trigger` tổng hợp.
+ *
+ * Input:
+ * - Message MQTT dạng CSV từ broker cấu hình trong `StormConfig`.
+ *
+ * Output:
+ * - Stream `data` gửi sang `Bolt_split`.
+ * - File log tạm và MQTT log phục vụ theo dõi, không phải tuple downstream.
+ *
+ * State:
+ * - `messages`: hàng đợi message nhận qua callback nhưng chưa emit.
+ * - Các bộ đếm `total/success/fail/speed/load/totalLoad` để đo hiệu năng ingest.
+ *
+ * Khi state thay đổi:
+ * - Thêm vào queue tại `messageArrived`.
+ * - Bỏ khỏi queue và emit ở `nextTuple`.
+ * - Ghi log ở `log()`.
+ * - Không ghi DB trực tiếp.
+ *
+ * Tóm tắt:
+ * - Component này chuyển MQTT message thành tuple Storm.
+ * - State quan trọng nhất là `messages` và các bộ đếm tốc độ.
+ * - Có thể scale song song theo topic hoặc nhiều instance, nhưng cần chú ý semantics subscribe MQTT.
+ * - Điểm nghẽn hiệu năng nằm ở parse chuỗi CSV, I/O log định kỳ và queue nội bộ nếu tốc độ ingest cao.
+ */
 public class Spout_data implements MqttCallback, IRichSpout {
 
+    // Collector dùng để emit tuple Storm.
     private SpoutOutputCollector _collector;
+    // Hàng đợi đệm giữa callback MQTT và vòng lặp `nextTuple()` của Storm.
+    // Tên đề xuất dễ hiểu hơn: `pendingMessages`.
     LinkedBlockingQueue<String> messages;
+    // Tổng số message MQTT đã nhận từ broker.
     Long total = Long.valueOf(0);
+    // Số tuple đã được Storm ack.
     Long success = Long.valueOf(0);
+    // Số tuple bị Storm fail.
     Long fail = Long.valueOf(0);
+    // Bộ đếm message dùng để tính tốc độ ingest trong khoảng log gần nhất.
     Long speed = Long.valueOf(0);
+    // Số message thuộc property "load" trong khoảng log gần nhất.
     Long load = Long.valueOf(0);
+    // Tổng số message "load" từ lúc spout khởi động.
     Long totalLoad = Long.valueOf(0);
+    // Mốc thời gian log gần nhất.
+    // Tên đề xuất dễ hiểu hơn: `lastLogAt`.
     Long last = System.currentTimeMillis();
+    // MQTT client kết nối broker nguồn.
     MqttClient client;
+    // Client id MQTT, gắn theo topology + topic.
     String clientId = "";
+    // Topic MQTT đang subscribe.
     String topic = "iot-data";
+    // Format topic publish log trạng thái ingest.
     String logTopic = "%sspout-log";
+    // Cấu hình toàn cục.
     StormConfig config;
 
     public Spout_data(StormConfig config, String topic) {
@@ -65,6 +112,7 @@ public class Spout_data implements MqttCallback, IRichSpout {
     }
 
     public void messageArrived(String topic, MqttMessage message) throws Exception {
+        // Callback MQTT chỉ enqueue dữ liệu để tránh làm nặng thread callback bằng xử lý business.
         messages.add(message.toString());
         total++;
         speed++;
@@ -146,14 +194,18 @@ public class Spout_data implements MqttCallback, IRichSpout {
     public void nextTuple() {
         while (!messages.isEmpty()) {
             try {
+                // Lấy từng message khỏi queue để chuyển thành tuple Storm.
                 String message = messages.poll();
                 String[] metric = message.split(",");
+                // Chỉ emit metric có property == 1 (load), vì pipeline phía sau đang giả định input là công suất tiêu thụ.
+                // TODO: magic number `1` khó mở rộng; nên có enum/hằng số mô tả rõ property.
                 if (Integer.parseInt(metric[3]) == 1) { // On prend juste les loads
                     _collector.emit("data", new Values(metric[1], metric[2], metric[3], metric[4], metric[5], metric[6]),
                             message);
                     load++;
                     totalLoad++;
                 }
+                // Ghi log định kỳ để Spout_trigger có snapshot mới nhất khi phát trigger.
                 if (System.currentTimeMillis() - last > 10000) {
                     log();
                 }
@@ -167,6 +219,7 @@ public class Spout_data implements MqttCallback, IRichSpout {
     }
 
     public void log() {
+        // Snapshot tình trạng ingest hiện tại dưới dạng JSON và publish/log ra ngoài.
         String log = new SpoutProp(clientId, client.isConnected(),
                 (float) (speed * 1000 / (System.currentTimeMillis() - last)),
                 (float) (load * 1000 / (System.currentTimeMillis() - last)), total, totalLoad, messages.size(), success,
@@ -200,6 +253,7 @@ public class Spout_data implements MqttCallback, IRichSpout {
         System.out.println("[Spout-data-" + topic + "] Connecting to broker (" + config.getSpoutBrokerURL() + ")..");
         try {
             if (client!=null) {
+                // Đóng client cũ trước khi tạo lại để tránh giữ socket cũ khi reconnect đệ quy.
                 client.close(true);
             }
             client = new MqttClient(config.getSpoutBrokerURL(), clientId);

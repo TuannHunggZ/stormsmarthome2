@@ -2,16 +2,45 @@ package com.storm.iotdata.models;
 
 import java.io.Serializable;
 
+/**
+ * DeviceProp lưu thống kê lịch sử theo thiết bị để so sánh và phát hiện bất thường.
+ *
+ * Ý nghĩa field:
+ * - `houseId`, `householdId`, `deviceId`: định danh thiết bị.
+ * - `sliceGap`: window mà thống kê này áp dụng.
+ * - `min/max/avg/count`: thống kê lịch sử rolling.
+ * - `lastUpdate`: thời điểm cập nhật cuối.
+ * - `saved`: đã persist xuống DB hay chưa.
+ *
+ * Các khóa:
+ * - `getUniqueId()`: device + gap, dùng làm key bản ghi thống kê cụ thể.
+ * - `getDeviceUniqueId()`: device không kèm gap, hay được dùng để lookup nhanh trong bolt.
+ *
+ * Tóm tắt:
+ * - Object này là state lâu dài của `Bolt_avg`.
+ * - Không phải dữ liệu stream; chỉ hỗ trợ outlier detection.
+ * - Có thể dùng song song an toàn vì là data object, nhưng cần chú ý nhất quán khi nhiều instance cùng ghi.
+ */
 public class DeviceProp implements Serializable{
+    // House chứa thiết bị.
     public int houseId;
+    // Household chứa thiết bị.
     public int householdId;
+    // Định danh thiết bị.
     public int deviceId;
+    // Gap/window của thống kê này.
     public int sliceGap;
+    // Giá trị nhỏ nhất lịch sử.
     public Double min;
+    // Giá trị lớn nhất lịch sử.
     public Double max;
+    // Giá trị trung bình lịch sử.
     public Double avg;
+    // Số lượng mẫu đã góp vào rolling statistic.
     public Double count;
+    // Mốc cập nhật gần nhất.
     public Long lastUpdate;
+    // Đã lưu DB hay chưa.
     public boolean saved = false;
 
     public DeviceProp(int houseId, int householdId, int deviceId, int sliceGap) {
@@ -97,6 +126,7 @@ public class DeviceProp implements Serializable{
     }
 
     public int getSliceGap() {
+        // TODO: method hiện trả về `deviceId` thay vì `sliceGap`; comment giữ nguyên để không đổi logic.
         return this.deviceId;
     }
 
@@ -249,6 +279,7 @@ public class DeviceProp implements Serializable{
     }
 
     public String getUniqueId(){
+        // Khóa thống kê đầy đủ theo device và window.
         return String.format("%d-%d-%d-%d", houseId, householdId, deviceId, sliceGap);
     }
 

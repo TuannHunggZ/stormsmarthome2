@@ -27,21 +27,72 @@ import com.storm.iotdata.models.*;
  *
  * @author hiiamlala
  */
+/**
+ * Bolt_sum tổng hợp dữ liệu từ cấp device lên household và house theo từng timeslice.
+ *
+ * Vai trò:
+ * - Nhận `DeviceData` đã chốt từ `Bolt_avg`.
+ * - Lưu cache phân cấp theo `timeslice -> house -> household -> device`.
+ * - Khi nhận trigger, tính ra `HouseData` và `HouseholdData`, ghi DB, cập nhật prop/outlier,
+ *   rồi emit các aggregate đó xuống `Bolt_forecast`.
+ *
+ * Input:
+ * - Stream `data` từ `Bolt_avg` (chỉ xử lý `type == DeviceData`).
+ * - Stream `trigger` chuyển tiếp từ `Bolt_avg`.
+ *
+ * Output:
+ * - Stream `data` chứa `HouseData` và `HouseholdData`.
+ * - Stream `trigger` chuyển tiếp sang `Bolt_forecast`.
+ *
+ * State:
+ * - `allData`: cache nguyên liệu device theo cấu trúc timeslice/house/household/device.
+ * - `finalHouseDataList`: cache aggregate house theo houseId và sliceId.
+ * - `finalHouseholdDataList`: cache aggregate household theo householdUniqueId và sliceId.
+ * - `housePropList`, `householdPropList`: thống kê lịch sử phục vụ phát hiện bất thường.
+ *
+ * Khi state thay đổi:
+ * - Thêm/cập nhật `allData` khi nhận DeviceData.
+ * - Tạo/cập nhật `finalHouseDataList` và `finalHouseholdDataList` ở mỗi lần trigger.
+ * - Ghi DB/notification ở trigger.
+ * - Xóa state cũ khi bản ghi đã lưu và quá hạn dọn dẹp.
+ *
+ * Tóm tắt:
+ * - Đây là tầng aggregate thứ hai, nâng từ device lên household/house.
+ * - State quan trọng nhất là `allData` và hai map aggregate cuối.
+ * - Có thể scale song song nếu partitioning theo timeslice/house ổn định; hiện state local làm việc scale phức tạp.
+ * - Điểm nghẽn là cấu trúc HashMap lồng sâu, nhiều vòng lặp toàn phần và nhiều lần ghi DB trong một trigger.
+ */
 public class Bolt_sum extends BaseRichBolt {
+    // Số lần liên tiếp ghi HouseData thất bại.
     public Integer houseDataUpdateFailCount = 0;
+    // Số lần liên tiếp ghi HouseNotification thất bại.
     public Integer houseNotiUpdateFailCount = 0;
+    // Số lần liên tiếp ghi HouseProp thất bại.
     public Integer housePropUpdateFailCount = 0;
+    // Số lần liên tiếp ghi HouseholdData thất bại.
     public Integer householdDataUpdateFailCount = 0;
+    // Số lần liên tiếp ghi HouseholdNotification thất bại.
     public Integer householdNotiUpdateFailCount = 0;
+    // Số lần liên tiếp ghi HouseholdProp thất bại.
     public Integer householdPropUpdateFailCount = 0;
+    // Cấu hình toàn cục.
     private StormConfig config;
+    // Kích thước window của bolt này, đồng bộ với `Bolt_avg` upstream tương ứng.
     public Integer gap;
+    // Sau bao nhiêu chu kỳ thì aggregate đã lưu được phép xóa khỏi cache.
     public Integer cleanTrigger = 5; //older than 5*gap will be clean 
     private OutputCollector _collector;
+    // Cache dữ liệu thiết bị gốc để tính tổng lại theo cấu trúc phân cấp:
+    // sliceId -> houseId -> householdId -> deviceUniqueId -> DeviceData
+    // Tên đề xuất dễ hiểu hơn: `deviceDataBySlice`.
     public HashMap<String, HashMap<Integer, HashMap<Integer, HashMap<String, DeviceData> > > > allData = new HashMap<String, HashMap<Integer,HashMap<Integer,HashMap<String, DeviceData> > > >();
+    // Cache kết quả aggregate ở cấp house: houseId -> sliceId -> HouseData
     public HashMap <Integer, HashMap<String, HouseData> > finalHouseDataList = new HashMap <Integer, HashMap<String, HouseData> >();
+    // Cache kết quả aggregate ở cấp household: householdUniqueId -> sliceId -> HouseholdData
     public HashMap <String, HashMap<String, HouseholdData> > finalHouseholdDataList = new HashMap <String, HashMap<String, HouseholdData> >();
+    // Cache thống kê lịch sử theo house để phát hiện outlier.
     public HashMap <String, HouseProp> housePropList = new HashMap<String, HouseProp>();
+    // Cache thống kê lịch sử theo household để phát hiện outlier.
     public HashMap <String, HouseholdProp> householdPropList = new HashMap<String, HouseholdProp>();
     
     public Bolt_sum(int gap, StormConfig config) {
@@ -66,6 +117,7 @@ public class Bolt_sum extends BaseRichBolt {
     public void execute(Tuple tuple) {
         try{
             if(tuple.getSourceStreamId().equals("trigger")){
+                // Trigger là thời điểm đóng batch aggregate và persist dữ liệu ở tầng house/household.
                 Integer triggerInterval = (Integer) tuple.getValueByField("trigger");
                 SpoutProp spoutProp = (SpoutProp) tuple.getValueByField("spoutProp");
 
@@ -81,7 +133,8 @@ public class Bolt_sum extends BaseRichBolt {
                 Stack<HouseNotification> houseNotificationList = new Stack<HouseNotification>();
                 Stack<HouseholdNotification> householdNotificationList = new Stack<HouseholdNotification>();
 
-                // Cal sum
+                // Tính lại aggregate từ dữ liệu device đã lưu trong `allData`.
+                // Bước này giữ `allData` làm "source of truth" để luôn tính ra House/Household mới nhất theo từng timeslice.
                 for(String timeslice : allData.keySet()){
                     HashMap<Integer, HashMap<Integer, HashMap<String, DeviceData> > > sliceData = allData.get(timeslice);
                     for(Integer houseId : sliceData.keySet()) {
@@ -112,7 +165,7 @@ public class Bolt_sum extends BaseRichBolt {
                     }
                 }
 
-                //Init data
+                // Chuẩn bị danh sách aggregate cần lưu hoặc cần dọn cho HouseData.
                 for(Integer houseId : finalHouseDataList.keySet()) {
                     HashMap<String, HouseData> tempFinalHouseData = finalHouseDataList.get(houseId);
                     for(String timeslice : tempFinalHouseData.keySet()){
@@ -128,6 +181,7 @@ public class Bolt_sum extends BaseRichBolt {
                     }
                 }
 
+                // Tương tự cho HouseholdData.
                 for(String uniqueHouseholdId : finalHouseholdDataList.keySet()) {
                     HashMap<String, HouseholdData> tempFinalHouseholdData = finalHouseholdDataList.get(uniqueHouseholdId);
                     for(String timeslice : tempFinalHouseholdData.keySet()){
@@ -143,6 +197,8 @@ public class Bolt_sum extends BaseRichBolt {
                     }
                 }
 
+                // Chỉ xóa hẳn một timeslice khi cả house và household cùng quá hạn,
+                // nhằm tránh mất nguyên liệu khi một phía vẫn còn cần dùng.
                 for(HouseData houseData : houseDataNeedClean){
                     Timeslice timeslice = houseData.getTimeslice();
                     if(timesliceNeedClean.contains(timeslice.getSliceId())) break;
@@ -154,7 +210,7 @@ public class Bolt_sum extends BaseRichBolt {
                     }
                 }
 
-                // DB store data
+                // Persist aggregate house/household xuống DB.
                 if(houseDataNeedSave.size()!=0){
                     if(DB_store.pushHouseData(houseDataNeedSave, new File("./tmp/houseData2db-" + gap + ".lck"))){
                         houseDataUpdateFailCount=0;
@@ -179,7 +235,7 @@ public class Bolt_sum extends BaseRichBolt {
                     new File("./tmp/householdData2db-" + gap + ".lck").delete();
                 }
 
-                // DB store prop
+                // Persist rolling statistics cho house/household để phục vụ outlier về sau.
                 Stack<HouseProp> tempHousePropList = new Stack<HouseProp>();
                 tempHousePropList.addAll(housePropList.values());
                 if(DB_store.pushHouseProp(tempHousePropList, new File("./tmp/houseProp2db-"+ gap +".lck"))){
@@ -204,7 +260,7 @@ public class Bolt_sum extends BaseRichBolt {
                     new File("./tmp/householdProp2db-"+ gap +".lck").delete();
                 }
 
-                // Check Outlier
+                // Phát hiện bất thường dựa trên min/avg/max lịch sử hiện có.
                 for(HouseData houseData : houseDataNeedSave){
                     HouseProp houseProp = housePropList.getOrDefault(houseData.getHouseUniqueId(), new HouseProp(houseData.getHouseId(), houseData.getGap()));
                     // Check min
@@ -239,7 +295,7 @@ public class Bolt_sum extends BaseRichBolt {
                     householdPropList.put(householdData.getHouseholdUniqueId(), householdProp.addValue(householdData.getAvg()));
                 }
                 
-                // Save noti
+                // Lưu và publish notification nếu được bật.
                 if(DB_store.pushHouseNotification(houseNotificationList, new File("./tmp/housenoti2db-" + gap + ".lck"))){
                     houseNotiUpdateFailCount=0;
                     // House noti saved
@@ -264,7 +320,7 @@ public class Bolt_sum extends BaseRichBolt {
                     new File("./tmp/householdnoti2db-" + gap + ".lck").delete();
                 }
 
-                //Logging
+                // Log kích thước state và thời gian flush để theo dõi điểm nóng hiệu năng.
                 Long execTime = System.currentTimeMillis() - startExec;
 
                 Stack<String> logs = new Stack<String>();
@@ -291,7 +347,7 @@ public class Bolt_sum extends BaseRichBolt {
                     e.printStackTrace();
                 }
 
-                //Wipe unused data
+                // Dọn state cũ sau khi persist thành công để giải phóng bộ nhớ.
                 for(String timeslice : timesliceNeedClean){
                     allData.remove(timeslice);
                 }
@@ -303,10 +359,12 @@ public class Bolt_sum extends BaseRichBolt {
                 for(HouseholdData householdData : householdDataNeedClean) {
                     finalHouseholdDataList.get(householdData.getHouseholdUniqueId()).remove(householdData.getSliceId());
                 }
+                // Chuyển trigger cho tầng forecast sau khi tầng sum đã chốt xong dữ liệu.
                 _collector.emit("trigger", tuple, new Values(triggerInterval, spoutProp));
                 _collector.ack(tuple);
             }
             else if(tuple.getSourceStreamId().equals("data") && tuple.getValueByField("type").equals(DeviceData.class.getSimpleName())){
+                // Chỉ nhận DeviceData từ Bolt_avg rồi nạp vào cache phân cấp để đợi trigger tổng hợp.
                 DeviceData tempData     = (DeviceData) tuple.getValueByField("data");
 
                 HashMap<Integer, HashMap<Integer,HashMap<String, DeviceData> > > sliceData = allData.getOrDefault(tempData.getSliceId(), new HashMap<Integer, HashMap<Integer,HashMap<String, DeviceData> > >());

@@ -6,11 +6,33 @@ import java.util.Objects;
 /**
  * HouseData
  */
+/**
+ * HouseData là aggregate ở cấp house cho một `Timeslice`.
+ *
+ * Ý nghĩa field:
+ * - `houseId`: định danh house.
+ * - `value`: tổng hoặc trung bình đang được lưu cho house ở timeslice đó.
+ * - `lastUpdate`: thời điểm cập nhật cuối để cleanup cache.
+ * - `saved`: đã persist xuống DB hay chưa.
+ *
+ * Các khóa:
+ * - `getUniqueId()`: house + timeslice, dùng làm khóa cache và DB.
+ * - `getHouseUniqueId()`: chỉ định danh house, dùng làm khóa thống kê `HouseProp`.
+ *
+ * Tóm tắt:
+ * - Object này là đầu ra aggregate của `Bolt_sum` và đầu vào forecast.
+ * - State vòng đời được quản lý bởi `Bolt_sum`/`Bolt_forecast`.
+ * - Có thể dùng song song an toàn vì là data object.
+ */
 public class HouseData extends Timeslice implements Serializable{
 
+    // Định danh house.
     public Integer houseId;
+    // Giá trị aggregate của house trong timeslice.
     public Double value;
+    // Mốc cập nhật gần nhất.
     public Long lastUpdate;
+    // Đã lưu DB hay chưa.
     public Boolean saved = false;
 
     public HouseData() {
@@ -144,6 +166,7 @@ public class HouseData extends Timeslice implements Serializable{
     }
 
     public String getUniqueId() {
+        // Khóa đầy đủ của house theo timeslice.
         return String.format("%d-%s-%s-%s-%d-%d", houseId, year, month, day, sliceGap, sliceIndex);
     }
 

@@ -2,14 +2,25 @@ package com.storm.iotdata.models;
 
 import com.google.gson.Gson;
 
+/**
+ * HouseNotification là cảnh báo bất thường ở cấp house cho một timeslice.
+ */
 public class HouseNotification extends Timeslice{
+    // Loại cảnh báo theo ngưỡng min/avg/max.
     public Integer type;
+    // House phát sinh cảnh báo.
     public Integer houseId;
+    // Baseline min lịch sử.
     public Double min;
+    // Baseline max lịch sử.
     public Double max;
+    // Baseline avg lịch sử.
     public Double avg;
+    // Giá trị thực tế tại timeslice.
     public Double value;
+    // Thời điểm tạo notification.
     public Long timestamp;
+    // Cờ persist.
     public Boolean saved=false;
 
     public HouseNotification(Integer type, HouseData data, HouseProp dataProp){

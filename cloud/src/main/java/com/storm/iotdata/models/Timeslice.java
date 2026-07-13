@@ -5,11 +5,34 @@ import java.time.YearMonth;
 import java.util.Objects;
 import java.io.Serializable;
 
+/**
+ * Timeslice mô tả một lát thời gian rời rạc dùng làm khóa aggregate trong toàn topology.
+ *
+ * Ý nghĩa field:
+ * - `year/month/day`: ngày của lát thời gian.
+ * - `sliceIndex`: chỉ số lát trong ngày, phụ thuộc vào `sliceGap`.
+ * - `sliceGap`: độ rộng lát thời gian, tính theo phút.
+ *
+ * Các khóa:
+ * - `getSliceId()`: khóa đầy đủ của timeslice (`yyyy-MM-dd-index-gap`), dùng làm key chính cho cache và DB.
+ * - `getSliceName()`: nhãn hiển thị thân thiện cho log/UI.
+ *
+ * Tóm tắt:
+ * - Đây là lớp nền cho `DeviceData`, `HouseData`, `HouseholdData` và notification.
+ * - Không tự giữ state runtime ngoài thông tin định danh thời gian.
+ * - Có thể dùng song song an toàn vì là data object.
+ * - Điểm dễ lỗi nằm ở việc quy đổi `sliceIndex` sang ngày/tháng khi vượt biên.
+ */
 public class Timeslice implements Serializable {
+    // Năm của timeslice.
     public String year;
+    // Tháng của timeslice, định dạng 2 chữ số.
     public String month;
+    // Ngày trong tháng, định dạng 2 chữ số.
     public String day;
+    // Chỉ số lát thời gian trong ngày.
     public Integer sliceIndex;
+    // Độ rộng của lát thời gian, tính theo phút.
     public Integer sliceGap;
 
     public Timeslice() {
@@ -25,6 +48,7 @@ public class Timeslice implements Serializable {
 
     public Timeslice(String sliceId) {
         try{
+            // Parse chuỗi sliceId đã chuẩn hóa để khôi phục đối tượng Timeslice.
             String[] sliceProp = sliceId.split("-");
             String year = sliceProp[0];
             String month = sliceProp[1];
@@ -50,6 +74,7 @@ public class Timeslice implements Serializable {
     }
 
     public Timeslice(String year, String month, String day, Integer index, Integer gap) {
+        // Chuẩn hóa index/day/month/year để index vượt cuối ngày vẫn ánh xạ sang ngày hợp lệ kế tiếp.
         this.sliceGap = gap;
         Integer numSliceInDay = 24*60/this.sliceGap;
         Integer numDayInMonth = YearMonth.of(Integer.parseInt(year), Integer.parseInt(month)).lengthOfMonth();
@@ -144,6 +169,7 @@ public class Timeslice implements Serializable {
     }
 
     public String getSliceId() {
+        // Khóa định danh đầy đủ của lát thời gian, được dùng rộng rãi làm key HashMap và key truy vấn.
         return year + "-" + month + "-" + day + "-" + sliceIndex + "-" + sliceGap;
     }
 
