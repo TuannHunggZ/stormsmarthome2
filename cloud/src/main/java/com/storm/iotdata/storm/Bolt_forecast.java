@@ -242,7 +242,7 @@ public class Bolt_forecast extends BaseRichBolt {
                     HouseholdData temp2 = (HouseholdData) beforeAvgs.get(Math.floorDiv(beforeAvgs.size(), 2)-1);
                     median = (temp1.getAvg() + temp2.getAvg())/2;
                 }
-                else if(beforeAvgs.get(Math.floorDiv(beforeAvgs.size(), 2)) instanceof HouseholdData){
+                else if(beforeAvgs.get(Math.floorDiv(beforeAvgs.size(), 2)) instanceof DeviceData){
                     DeviceData temp1 = (DeviceData) beforeAvgs.get(Math.floorDiv(beforeAvgs.size(), 2));
                     DeviceData temp2 = (DeviceData) beforeAvgs.get(Math.floorDiv(beforeAvgs.size(), 2)-1);
                     median = (temp1.getAvg() + temp2.getAvg())/2;
