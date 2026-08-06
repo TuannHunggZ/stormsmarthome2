@@ -17,21 +17,19 @@ services:
     command: sh -c "storm nimbus & storm ui"
     volumes:
       - ./storm/config/nimbus.yaml:/conf/storm.yaml
-      - ./tagawarescheduler/target/tagawarescheduler-1.0.jar:/apache-storm-2.5.0/lib/tagawarescheduler-1.0.jar
       - ./target/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar:/apache-storm-2.5.0/Storm-IOTdata-1.0-SNAPSHOT-jar-with-dependencies.jar
     ports:
       - 8080:8080
-      - 6627:6627
     restart: always
     networks:
       storm_network:
     depends_on:
       - zookeeper
 
-  supervisor-cloud:
+  supervisor1:
     image: storm:2.5.0
-    container_name: supervisor-cloud
-    hostname: supervisor-cloud
+    container_name: supervisor1
+    hostname: supervisor1
     command: storm supervisor
     depends_on:
       - nimbus
@@ -39,13 +37,31 @@ services:
     restart: always
     volumes:
       - ./storm/config/supervisor.yaml:/conf/storm.yaml
-    ports:
-      - 6700-6702:6700-6702
     networks:
       storm_network:
-    extra_hosts:
-      - "mqtt-broker:192.168.1.110"
-      - "supervisor-fog:192.168.1.110"
+
+  supervisor2:
+    image: storm:2.5.0
+    container_name: supervisor2
+    hostname: supervisor2
+    command: storm supervisor
+    depends_on:
+      - nimbus
+      - zookeeper
+    restart: always
+    volumes:
+      - ./storm-config/supervisor.yaml:/conf/storm.yaml
+    networks:
+      storm_network:
+
+  mqtt-broker:
+    image: mqtt-broker-iotdata
+    container_name: mqtt-broker
+    pull_policy: never
+    networks:
+      storm_network:
+    ports:
+      - 1883:1883
 
   storm-exporter:
     image: stormexporter:v1
@@ -80,7 +96,7 @@ services:
       - storm_network
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:12.1.9
     container_name: grafana
     depends_on:
       - prometheus

@@ -8,5 +8,3 @@ nimbus.seeds: ["nimbus"]
 storm.log.dir: "/logs"
 
 storm.local.dir: "/data"
-
-storm.scheduler: com.edited.tagawarescheduler.TagAwareScheduler
